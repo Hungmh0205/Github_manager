@@ -78,7 +78,7 @@ class GitHubManager(QWidget):
 
         self.setLayout(main_layout)
         self.setWindowTitle("GitHub Manager")
-        self.resize(500, 600)
+        self.resize(600, 700)
 
     def initMainTab(self):
         layout = QVBoxLayout()
@@ -245,14 +245,16 @@ class GitHubManager(QWidget):
             return
 
         token = selected_item.text()
-        confirm = QMessageBox.question(self, "Xác nhận", f"Bạn có chắc muốn xóa token này?", 
+        confirm = QMessageBox.question(self, "Xác nhận", f"Bạn có chắc muốn xóa token này?",
                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        
+
         if confirm == QMessageBox.StandardButton.Yes:
-            self.tokens.remove(token)  # Xóa khỏi danh sách
+            if token in self.tokens:
+                self.tokens.remove(token)  # Xóa khỏi danh sách
             self.token_list.takeItem(self.token_list.row(selected_item))  # Xóa khỏi giao diện
-            self.save_tokens_to_file()  # Cập nhật lại file token
+            self.save_tokens_to_file()  # Cập nhật file tokens.txt
             QMessageBox.information(self, "Thành công", "Token đã được xóa!")
+
 
     def save_tokens_to_file(self):
         """Ghi danh sách token vào file với mã hóa UTF-8"""
@@ -264,13 +266,21 @@ class GitHubManager(QWidget):
 
     def connect_github(self):
         self.github_token = self.token_input.text().strip()
+        if not self.github_token:
+            QMessageBox.warning(self, "Lỗi", "Vui lòng nhập GitHub Token!")
+            return
+
         try:
             self.github_client = github.Github(self.github_token)
+            self.github_client.get_user().login  # Kiểm tra token có hợp lệ không
             self.repo = None
             self.file_list.clear()
             self.file_list.addItem("✅ Kết nối GitHub thành công!")
+        except github.BadCredentialsException:
+            QMessageBox.critical(self, "Lỗi", "Token không hợp lệ! Hãy kiểm tra lại.")
         except Exception as e:
-            self.file_list.addItem(f"❌ Lỗi kết nối: {e}")
+            QMessageBox.critical(self, "Lỗi", f"❌ Lỗi kết nối: {e}")
+
 
     def list_repositories(self):
         """ Liệt kê danh sách repository của tài khoản GitHub """
@@ -520,14 +530,19 @@ class GitHubManager(QWidget):
         """ Mở repository hoặc thư mục khi click đúp """
         item_text = item.text().strip()
 
-        if item.text() == "⬆️ .. (Quay lại)":
+        if item_text == "⬆️ .. (Quay lại)":
             self.go_back()
             return
 
         if item_text.startswith("📁 "):
             folder_name = item_text[2:].strip()  # Loại bỏ biểu tượng "📁 "
-            self.current_path = f"{self.current_path}/{folder_name}" if self.current_path else folder_name
-            self.load_repository_files(self.current_path)
+            new_path = f"{self.current_path}/{folder_name}" if self.current_path else folder_name
+
+            try:
+                self.load_repository_files(new_path)
+                self.current_path = new_path
+            except Exception as e:
+                QMessageBox.warning(self, "Lỗi", f"Không thể mở thư mục: {e}")
         else:
             self.repo_input.setText(item_text)
             self.current_path = ""  # Reset đường dẫn khi mở repo mới
@@ -591,11 +606,16 @@ class GitHubManager(QWidget):
         repo_name = self.repo.name  # Lấy tên repo chính xác
         full_path = os.path.join(save_path, repo_name)
 
+        if os.path.exists(full_path):
+            QMessageBox.warning(self, "Lỗi", f"Thư mục '{repo_name}' đã tồn tại! Hãy chọn nơi khác.")
+            return
+
         try:
-            os.system(f'git clone "{repo_url}" "{full_path}"')  # Đặt đường dẫn trong dấu ngoặc kép để tránh lỗi
+            os.system(f'git clone "{repo_url}" "{full_path}"')  # Dùng dấu ngoặc kép để tránh lỗi đường dẫn
             QMessageBox.information(self, "Thành công", f"Repository '{repo_name}' đã được tải về thành công!")
         except Exception as e:
             QMessageBox.critical(self, "Lỗi", f"Không thể tải repository: {e}")
+
 
 
 
