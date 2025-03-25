@@ -4,6 +4,7 @@ import github
 import webbrowser
 import requests
 import shutil
+import pyperclip
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QFileDialog, QLineEdit, QLabel, QListWidget, QSplashScreen
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt, QTimer
@@ -12,7 +13,8 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QMessageBox
 from PyQt6.QtWidgets import QComboBox
 from PyQt6.QtWidgets import QTabWidget
-
+from PyQt6.QtGui import QAction
+from PyQt6.QtWidgets import QMenu
 
 
 class SplashScreen(QSplashScreen):
@@ -40,6 +42,8 @@ class GitHubManager(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowIcon(QIcon("splash1.png"))  # Đặt icon cho cửa sổ ứng dụng
+        self.tokens = []  # Danh sách lưu trữ tokens
+        self.token_tab = QWidget()  # Khởi tạo trước khi thêm vào tab
         self.initUI()
         self.github_token = ""
         self.repo = None
@@ -65,10 +69,12 @@ class GitHubManager(QWidget):
 
         self.tabs.addTab(self.main_tab, "Quản lý Repository")
         self.tabs.addTab(self.download_tab, "Tải File")
+        self.tabs.addTab(self.token_tab, "Danh sách Tokens")
         main_layout.addWidget(self.tabs)
 
         self.initMainTab()  # Hàm xử lý giao diện tab chính
         self.initDownloadTab()  # Hàm xử lý giao diện tab tải file
+        self.initTokenTab()
 
         self.setLayout(main_layout)
         self.setWindowTitle("GitHub Manager")
@@ -80,6 +86,16 @@ class GitHubManager(QWidget):
         self.token_input = QLineEdit(self)
         self.token_input.setPlaceholderText("Nhập GitHub Token...")
         layout.addWidget(self.token_input)
+
+        #tạo token
+        self.generate_token_btn = QPushButton("Tạo Token GitHub", self)
+        self.generate_token_btn.clicked.connect(self.generate_github_token)
+        layout.addWidget(self.generate_token_btn)
+
+        #lưu token
+        self.save_token_btn = QPushButton("Lưu Token", self)
+        self.save_token_btn.clicked.connect(self.save_token)
+        layout.addWidget(self.save_token_btn)
 
         self.connect_btn = QPushButton("Kết nối GitHub", self)
         self.connect_btn.clicked.connect(self.connect_github)
@@ -140,12 +156,7 @@ class GitHubManager(QWidget):
         self.delete_repo_btn = QPushButton("Xóa Repository", self)
         self.delete_repo_btn.clicked.connect(self.delete_repository)
         layout.addWidget(self.delete_repo_btn)
-
-        #tạo token
-        self.generate_token_btn = QPushButton("Tạo Token GitHub", self)
-        self.generate_token_btn.clicked.connect(self.generate_github_token)
-        layout.addWidget(self.generate_token_btn)
-
+        
         self.main_tab.setLayout(layout)
 
     def initDownloadTab(self):
@@ -165,6 +176,89 @@ class GitHubManager(QWidget):
 
         self.download_tab.setLayout(layout)
 
+    def initTokenTab(self):
+        layout = QVBoxLayout()
+
+        self.token_list = QListWidget(self)
+        self.token_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.token_list.customContextMenuRequested.connect(self.show_token_menu)
+        layout.addWidget(self.token_list)
+
+        self.load_tokens_from_file()  # Gọi hàm đúng tên để load token khi khởi động
+
+        self.token_list.itemClicked.connect(self.copy_token)
+        self.token_tab.setLayout(layout)
+
+
+    def load_tokens_from_file(self):
+        """Đọc danh sách token từ file khi mở ứng dụng"""
+        if os.path.exists("tokens.txt"):
+            with open("tokens.txt", "r") as file:
+                self.tokens = [line.strip() for line in file.readlines()]
+                self.token_list.addItems(self.tokens)  # Hiển thị token trong danh sách
+
+
+    def load_saved_tokens(self):
+        """Hiển thị danh sách token khi mở tab"""
+        self.token_list.clear()
+        for token in self.tokens:
+            self.token_list.addItem(token)
+
+    def copy_token(self, item):
+        """Sao chép token khi click vào danh sách"""
+        token = item.text()
+        pyperclip.copy(token)
+        QMessageBox.information(self, "Thông báo", "Token đã được sao chép vào clipboard!")
+
+    def add_token(self, token):
+        """Thêm token vào danh sách và hiển thị"""
+        if token and token not in self.tokens:
+            self.tokens.append(token)
+            self.token_list.addItem(token)  # Cập nhật danh sách ngay
+
+
+    def save_token(self):
+        """Lưu token khi nhập vào ô và ghi vào file"""
+        token = self.token_input.text().strip()
+        if token and token not in self.tokens:
+            self.tokens.append(token)
+            self.token_list.addItem(token)
+            self.save_tokens_to_file()  # Ghi vào file
+            self.token_input.clear()
+            QMessageBox.information(self, "Thành công", "Token đã được lưu!")
+        else:
+            QMessageBox.warning(self, "Lỗi", "Vui lòng nhập token hợp lệ hoặc token đã tồn tại!")
+
+    def show_token_menu(self, position):
+        """Hiển thị menu chuột phải để xóa token"""
+        menu = QMenu()
+        delete_action = QAction("Xóa Token", self)
+        delete_action.triggered.connect(self.delete_selected_token)
+        menu.addAction(delete_action)
+        menu.exec(self.token_list.mapToGlobal(position))
+
+    def delete_selected_token(self):
+        """Xóa token đã chọn khỏi danh sách và file"""
+        selected_item = self.token_list.currentItem()
+        if not selected_item:
+            QMessageBox.warning(self, "Lỗi", "Vui lòng chọn token để xóa!")
+            return
+
+        token = selected_item.text()
+        confirm = QMessageBox.question(self, "Xác nhận", f"Bạn có chắc muốn xóa token này?", 
+                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        if confirm == QMessageBox.StandardButton.Yes:
+            self.tokens.remove(token)  # Xóa khỏi danh sách
+            self.token_list.takeItem(self.token_list.row(selected_item))  # Xóa khỏi giao diện
+            self.save_tokens_to_file()  # Cập nhật lại file token
+            QMessageBox.information(self, "Thành công", "Token đã được xóa!")
+
+    def save_tokens_to_file(self):
+        """Ghi danh sách token vào file với mã hóa UTF-8"""
+        with open("tokens.txt", "w", encoding="utf-8") as file:
+            for token in self.tokens:
+                file.write(token + "\n")
 
 
 
