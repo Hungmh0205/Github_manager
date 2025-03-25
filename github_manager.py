@@ -1,6 +1,7 @@
 import sys
 import os
 import github
+import webbrowser
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QFileDialog, QLineEdit, QLabel, QListWidget, QSplashScreen
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt, QTimer
@@ -67,17 +68,23 @@ class GitHubManager(QWidget):
         self.repo_input.setPlaceholderText("Nhập tên repository (username/repo)...")
         layout.addWidget(self.repo_input)
 
+        self.list_repos_btn = QPushButton("Danh sách Repository", self)
+        self.list_repos_btn.clicked.connect(self.list_repositories)
+        layout.addWidget(self.list_repos_btn)
+
+
         self.load_repo_btn = QPushButton("Tải danh sách file", self)
         self.load_repo_btn.clicked.connect(self.load_repository_files)
         layout.addWidget(self.load_repo_btn)
 
         self.file_list = QListWidget(self)
-        self.file_list.itemDoubleClicked.connect(self.open_directory)
+        self.file_list.itemDoubleClicked.connect(self.open_repository)
         layout.addWidget(self.file_list)
 
         self.back_btn = QPushButton("Quay lại", self)
         self.back_btn.clicked.connect(self.go_back)
         layout.addWidget(self.back_btn)
+
 
         self.upload_btn = QPushButton("Upload file", self)
         self.upload_btn.clicked.connect(self.upload_file)
@@ -97,7 +104,7 @@ class GitHubManager(QWidget):
 
         # Thêm phần tạo repository
         self.new_repo_input = QLineEdit(self)
-        self.new_repo_input.setPlaceholderText("Nhập tên repository mới...")
+        self.new_repo_input.setPlaceholderText("Nhập tên repository ...")
         layout.addWidget(self.new_repo_input)
 
         self.repo_visibility = QComboBox(self)
@@ -108,9 +115,19 @@ class GitHubManager(QWidget):
         self.create_repo_btn.clicked.connect(self.create_repository)
         layout.addWidget(self.create_repo_btn)
 
+        #xoá repository
+        self.delete_repo_btn = QPushButton("Xóa Repository", self)
+        self.delete_repo_btn.clicked.connect(self.delete_repository)
+        layout.addWidget(self.delete_repo_btn)
+
+        #tạo token
+        self.generate_token_btn = QPushButton("Tạo Token GitHub", self)
+        self.generate_token_btn.clicked.connect(self.generate_github_token)
+        layout.addWidget(self.generate_token_btn)
+
         self.setLayout(layout)
         self.setWindowTitle("GitHub Manager")
-        self.resize(400, 500)
+        self.resize(400, 600)
 
     def connect_github(self):
         self.github_token = self.token_input.text().strip()
@@ -121,6 +138,23 @@ class GitHubManager(QWidget):
             self.file_list.addItem("✅ Kết nối GitHub thành công!")
         except Exception as e:
             self.file_list.addItem(f"❌ Lỗi kết nối: {e}")
+
+    def list_repositories(self):
+        """ Liệt kê danh sách repository của tài khoản GitHub """
+        if not self.github_token:
+            QMessageBox.warning(self, "Lỗi", "Vui lòng nhập GitHub Token!")
+            return
+    
+        try:
+            g = github.Github(self.github_token)
+            user = g.get_user()
+            repos = user.get_repos()
+            self.file_list.clear()
+            for repo in repos:
+                self.file_list.addItem(repo.full_name)
+        except Exception as e:
+            QMessageBox.critical(self, "Lỗi", f"Không thể lấy danh sách repository: {e}")
+
 
     def load_repository_files(self, path=""):
         repo_name = self.repo_input.text().strip()
@@ -169,19 +203,6 @@ class GitHubManager(QWidget):
             error_msg = traceback.format_exc()
             print(error_msg)  # In lỗi chi tiết ra terminal
             self.file_list.addItem(f"❌ Lỗi tải file: {e}")
-
-
-
-
-
-    def open_directory(self, item):
-        if item.text() == "⬆️ .. (Quay lại)":
-            self.go_back()
-            return
-        
-        if item.text().startswith("📁"):
-            folder_path = item.text()[2:].strip()
-            self.load_repository_files(folder_path)
 
     def go_back(self):
         if self.current_path:
@@ -328,6 +349,48 @@ class GitHubManager(QWidget):
         except Exception as e:
             self.file_list.addItem(f"❌ Lỗi khi tạo file đầu tiên: {e}")
 
+    def generate_github_token(self):
+        """ Mở trang tạo token GitHub với các quyền cần thiết """
+        token_url = "https://github.com/settings/tokens/new?scopes=repo,public_repo,delete_repo&description=GitHubManagerToken"
+        webbrowser.open(token_url)
+        QMessageBox.information(self, "Hướng dẫn", "Hãy tạo token với các quyền: repo, public_repo, delete_repo và sao chép vào ứng dụng.")
+
+    def delete_repository(self):
+        """ Xóa repository đã nhập """
+        repo_name = self.repo_input.text().strip()
+        if not repo_name:
+            QMessageBox.warning(self, "Lỗi", "Vui lòng nhập tên repository!")
+            return
+
+        confirm = QMessageBox.question(self, "Xác nhận xóa", f"Bạn có chắc chắn muốn xóa repository '{repo_name}'? Hành động này không thể hoàn tác!",
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if confirm == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            g = github.Github(self.github_token)
+            repo = g.get_repo(repo_name)
+            repo.delete()
+            QMessageBox.information(self, "Thành công", f"Repository '{repo_name}' đã được xóa thành công!")
+        except Exception as e:
+            QMessageBox.critical(self, "Lỗi", f"Không thể xóa repository: {e}")
+
+    def open_repository(self, item):
+        """ Mở repository hoặc thư mục khi click đúp """
+        item_text = item.text().strip()
+
+        if item.text() == "⬆️ .. (Quay lại)":
+            self.go_back()
+            return
+
+        if item_text.startswith("📁 "):
+            folder_name = item_text[2:].strip()  # Loại bỏ biểu tượng "📁 "
+            self.current_path = f"{self.current_path}/{folder_name}" if self.current_path else folder_name
+            self.load_repository_files(self.current_path)
+        else:
+            self.repo_input.setText(item_text)
+            self.current_path = ""  # Reset đường dẫn khi mở repo mới
+            self.load_repository_files()
 
 
 if __name__ == "__main__":
