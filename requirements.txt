@@ -1,4 +1,4 @@
-PyQt6
-PyGithub
-requests
-pyperclip
+PyQt6==6.5.1
+PyGithub==1.58.1
+requests==2.31.0
+pyperclip==1.8.2
