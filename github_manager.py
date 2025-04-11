@@ -16,11 +16,19 @@ from PyQt6.QtWidgets import QTabWidget
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMenu
 
+def get_app_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)  # Khi chạy file .exe
+    else:
+        return os.path.dirname(os.path.abspath(__file__))  # Khi chạy file .py
+    
+token_path = os.path.join(get_app_dir(), "tokens.txt")
+
 
 class SplashScreen(QSplashScreen):
     def __init__(self):
         pixmap = QPixmap("splash.png").scaled(300, 300, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        super().__init__(pixmap, Qt.WindowType.FramelessWindowHint)  # Ẩn viền cửa sổ
+        super().__init__(pixmap, Qt.WindowType.FramelessWindowHint| Qt.WindowType.WindowStaysOnTopHint)  # Thêm cờ WindowStaysOnTopHint
         
     def paintEvent(self, event):
             """ Vẽ chữ trực tiếp lên Splash Screen với font tùy chỉnh """
@@ -62,7 +70,6 @@ class GitHubManager(QWidget):
 
     def initUI(self):
         main_layout = QVBoxLayout()
-    
         self.tabs = QTabWidget()
         self.main_tab = QWidget()
         self.download_tab = QWidget()
@@ -188,12 +195,13 @@ class GitHubManager(QWidget):
 
         self.token_list.itemClicked.connect(self.copy_token)
         self.token_tab.setLayout(layout)
+        
 
-
+    
     def load_tokens_from_file(self):
         """Đọc danh sách token từ file khi mở ứng dụng"""
-        if os.path.exists("tokens.txt"):
-            with open("tokens.txt", "r") as file:
+        if os.path.exists(token_path):
+            with open(token_path, "r") as file:
                 self.tokens = [line.strip() for line in file.readlines()]
                 self.token_list.addItems(self.tokens)  # Hiển thị token trong danh sách
 
@@ -258,7 +266,7 @@ class GitHubManager(QWidget):
 
     def save_tokens_to_file(self):
         """Ghi danh sách token vào file với mã hóa UTF-8"""
-        with open("tokens.txt", "w", encoding="utf-8") as file:
+        with open(token_path, "w", encoding="utf-8") as file:
             for token in self.tokens:
                 file.write(token + "\n")
 
@@ -603,7 +611,7 @@ class GitHubManager(QWidget):
             return
 
         repo_url = self.repo.clone_url
-        repo_name = self.repo.name  # Lấy tên repo chính xác
+        repo_name = self.repo.name  
         full_path = os.path.join(save_path, repo_name)
 
         if os.path.exists(full_path):
@@ -623,18 +631,23 @@ class GitHubManager(QWidget):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     
-    # Hiển thị Splash Screen trong 3 giây
     splash = SplashScreen()
     splash.show()
     
     def start_app():
-        global window  # Giữ biến window tồn tại
+        global window  
         splash.close()
         window = GitHubManager()
+        window.raise_()  
+        window.activateWindow()  
+        window.setWindowState(window.windowState() & ~Qt.WindowState.WindowMinimized | Qt.WindowState.WindowActive)
+        window.show()
+        window.raise_()  
+        window.activateWindow()  
+        window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+        window.setWindowState(window.windowState() & ~Qt.WindowState.WindowMinimized | Qt.WindowState.WindowActive)
         window.show()
 
-    
-    QTimer.singleShot(3000, start_app)  # 3 giây rồi mở app
-    
+    QTimer.singleShot(3000, start_app)  
     sys.exit(app.exec())
 
